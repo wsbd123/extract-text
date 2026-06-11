@@ -107,7 +107,7 @@
     .words-container {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5ch;
+      gap: 2px;
     }
 
     /* 词语标签 */
@@ -115,9 +115,9 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 5px 3px;
+      padding: 1px 2px;
       min-width: 36px;
-      min-height: 36px;
+      min-height: 28px;
       background-color: #f2f2f7;
       border-radius: 5px;
       font-size: 14px;
@@ -183,18 +183,19 @@
       font-weight: 700;
     }
 
-    /* 标点符号：半宽 */
+    /* 标点符号：窄宽度，缩小字号压缩字块 */
     .word-tag--punct {
-      min-width: 20px;
-      min-height: 36px;
-      padding: 5px 3px;
+      min-width: 5px;
+      min-height: 28px;
+      padding: 1px 1px;
+      font-size: 10px;
     }
 
     /* 单字：窄宽度 */
     .word-tag--single {
-      min-width: 28px;
-      min-height: 36px;
-      padding: 5px 3px;
+      min-width: 20px;
+      min-height: 28px;
+      padding: 1px 2px;
     }
 
     /* 加载中状态 */
@@ -345,6 +346,7 @@
     <footer class="actions">
       <button class="btn--small" id="btnFontDown" title="缩小字体">A-</button>
       <button class="btn--small" id="btnFontUp" title="放大字体">A+</button>
+      <button class="btn--small" id="btnSelectAll" title="全选">☑</button>
       <button class="btn btn--primary" id="btnCopy">
         <span>📋</span> 复制选中
       </button>
@@ -369,6 +371,7 @@
     var wordsContainer = document.getElementById('wordsContainer');
     var btnCopy = document.getElementById('btnCopy');
     var btnClear = document.getElementById('btnClear');
+    var btnSelectAll = document.getElementById('btnSelectAll');
     var btnFontDown = document.getElementById('btnFontDown');
     var btnFontUp = document.getElementById('btnFontUp');
     var toastEl = document.getElementById('toast');
@@ -722,6 +725,24 @@
       showToast('已清空选中');
     }
 
+    /**
+     * 全选所有词语
+     */
+    function selectAll() {
+      var tags = wordsContainer.querySelectorAll('.word-tag');
+      if (tags.length === 0) return;
+
+      selectedSet.clear();
+      for (var i = 0; i < tags.length; i++) {
+        var idx = parseInt(tags[i].getAttribute('data-index'), 10);
+        if (!isNaN(idx)) {
+          selectedSet.add(idx);
+          tags[i].classList.add('word-tag--selected');
+        }
+      }
+      showToast('已全选 ' + selectedSet.size + ' 个词');
+    }
+
     // ========== 字体缩放 ==========
 
     /**
@@ -755,6 +776,7 @@
     // ========== 按钮事件绑定 ==========
     btnCopy.addEventListener('click', copySelected);
     btnClear.addEventListener('click', clearSelection);
+    btnSelectAll.addEventListener('click', selectAll);
     btnFontDown.addEventListener('click', decreaseFontSize);
     btnFontUp.addEventListener('click', increaseFontSize);
 
