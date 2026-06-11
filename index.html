@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <!-- 苹果手机视口适配 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>中文分词选词</title>
+
+  <!-- 预连接 CDN，减少 DNS/TLS 握手延迟 -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+
+  <!-- 预加载分词库，与页面并行下载 -->
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/segmentit@2.0.3/dist/umd/segmentit.min.js" as="script">
+
+  <style>
+    /* 重置和基础样式 */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      /* iPhone 安全区域适配 */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+      background-color: #f5f5f7;
+      color: #1d1d1f;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+    }
+
+    /* 页面容器：模拟 iPhone 宽度，居中显示 */
+    .page {
+      width: 100%;
+      max-width: 414px;
+      min-height: 100vh;
+      background-color: #ffffff;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 主内容区 */
+    .content {
+      flex: 1;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* 空状态 */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 24px;
+      color: #8e8e93;
+      text-align: center;
+      gap: 8px;
+    }
+
+    .empty-state__icon {
+      font-size: 40px;
+      margin-bottom: 8px;
+    }
+
+    .empty-state__text {
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .empty-state__hint {
+      font-size: 11px;
+      color: #aeaeb2;
+      background-color: #f5f5f7;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-family: "SF Mono", "Menlo", "Courier New", monospace;
+      word-break: break-all;
+    }
+
+    /* 分词结果区 */
+    .words-area {
+      background-color: #ffffff;
+      border-radius: 10px;
+      padding: 10px 10px;
+      border: 0.5px solid #e5e5ea;
+      min-height: 60px;
+    }
+
+    .words-area__label {
+      font-size: 11px;
+      color: #8e8e93;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .words-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5ch;
+    }
+
+    /* 词语标签 */
+    .word-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 3px;
+      min-width: 36px;
+      min-height: 36px;
+      background-color: #f2f2f7;
+      border-radius: 5px;
+      font-size: 14px;
+      color: #1d1d1f;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+      border: 2px solid transparent;
+    }
+
+    .word-tag:active {
+      transform: scale(0.96);
+    }
+
+    /* 选中状态 */
+    .word-tag--selected {
+      background-color: #ff9f0a;
+      color: #1d1d1f;
+      font-weight: 700;
+      border-color: #ff9f0a;
+    }
+
+    /* 换行标记标签 */
+    .word-tag--newline {
+      background-color: #e8f0ff;
+      color: #007aff;
+      font-size: 12px;
+      min-height: 24px;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .word-tag--newline.word-tag--selected {
+      background-color: #ff9f0a;
+      color: #1d1d1f;
+      font-weight: 700;
+    }
+
+    /* 换行标记后的隐式断行元素 */
+    .word-break {
+      flex-basis: 100%;
+      width: 0;
+      height: 0;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* 其他特殊字符（如制表符） */
+    .word-tag--special {
+      background-color: #e8f0ff;
+      color: #007aff;
+      font-size: 12px;
+      min-height: 24px;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .word-tag--special.word-tag--selected {
+      background-color: #ff9f0a;
+      color: #1d1d1f;
+      font-weight: 700;
+    }
+
+    /* 标点符号：半宽 */
+    .word-tag--punct {
+      min-width: 20px;
+      min-height: 36px;
+      padding: 5px 3px;
+    }
+
+    /* 单字：窄宽度 */
+    .word-tag--single {
+      min-width: 28px;
+      min-height: 36px;
+      padding: 5px 3px;
+    }
+
+    /* 加载中状态 */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: #8e8e93;
+      font-size: 15px;
+      gap: 8px;
+    }
+
+    .loading__spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #e5e5ea;
+      border-top-color: #007aff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* 底部操作栏 */
+    .actions {
+      display: flex;
+      gap: 10px;
+      padding: 10px 12px 8px;
+      background-color: #ffffff;
+      border-top: 0.5px solid #e5e5ea;
+      position: sticky;
+      bottom: 0;
+    }
+
+    .btn {
+      flex: 1;
+      height: 40px;
+      border-radius: 10px;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: opacity 0.15s ease, transform 0.1s ease;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+      opacity: 0.85;
+    }
+
+    .btn--primary {
+      background-color: #007aff;
+      color: #ffffff;
+    }
+
+    .btn--secondary {
+      background-color: #f2f2f7;
+      color: #007aff;
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    .btn--small {
+      flex: 0 0 44px;
+      width: 44px;
+      height: 40px;
+      border-radius: 10px;
+      border: none;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #f2f2f7;
+      color: #1d1d1f;
+      transition: opacity 0.15s ease, transform 0.1s ease;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .btn--small:active {
+      transform: scale(0.97);
+      opacity: 0.85;
+    }
+
+    /* Toast 提示 */
+    .toast {
+      position: fixed;
+      top: 50px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background-color: rgba(29, 29, 31, 0.9);
+      color: #ffffff;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      white-space: nowrap;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .toast--visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* 分词失败提示 */
+    .error-text {
+      color: #ff3b30;
+      font-size: 14px;
+      text-align: center;
+      padding: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <!-- 主内容区 -->
+    <main class="content" id="content">
+      <!-- 分词结果区 -->
+      <div class="words-area">
+        <div class="words-area__label">分词结果（点击词语可多选）</div>
+        <div id="wordsContainer"></div>
+      </div>
+    </main>
+
+    <!-- 底部操作栏 -->
+    <footer class="actions">
+      <button class="btn--small" id="btnFontDown" title="缩小字体">A-</button>
+      <button class="btn--small" id="btnFontUp" title="放大字体">A+</button>
+      <button class="btn btn--primary" id="btnCopy">
+        <span>📋</span> 复制选中
+      </button>
+      <button class="btn btn--secondary" id="btnClear">
+        <span>🗑</span> 清空
+      </button>
+    </footer>
+  </div>
+
+  <!-- Toast 提示层 -->
+  <div class="toast" id="toast"></div>
+
+  <!-- segmentit 分词库 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/segmentit@2.0.3/dist/umd/segmentit.min.js">
+  </script>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // ========== DOM 引用 ==========
+    var wordsContainer = document.getElementById('wordsContainer');
+    var btnCopy = document.getElementById('btnCopy');
+    var btnClear = document.getElementById('btnClear');
+    var btnFontDown = document.getElementById('btnFontDown');
+    var btnFontUp = document.getElementById('btnFontUp');
+    var toastEl = document.getElementById('toast');
+
+    // ========== 状态管理 ==========
+    var wordList = [];        // 分词结果数组 [{w: '词', p: pos}]
+    var selectedSet = new Set();  // 已选中词的索引集合
+    var toastTimer = null;   // Toast 自动消失定时器
+    var fontSize = 14;       // 当前字号，默认 14px
+
+    // ========== Toast 提示 ==========
+
+    /**
+     * 显示 Toast 提示，2 秒后自动消失
+     * @param {string} message - 提示文字
+     */
+    function showToast(message) {
+      if (toastTimer) {
+        clearTimeout(toastTimer);
+      }
+      toastEl.textContent = message;
+      toastEl.classList.add('toast--visible');
+      toastTimer = setTimeout(function () {
+        toastEl.classList.remove('toast--visible');
+        toastTimer = null;
+      }, 2000);
+    }
+
+    // ========== URL 参数解析 ==========
+
+    /**
+     * 从 URL 中获取 text 参数值，保留换行符
+     * @returns {string|null} URL 解码后的文本，无参数返回 null
+     */
+    function getTextFromURL() {
+      var params = new URLSearchParams(window.location.search);
+      var text = params.get('text');
+      if (text && text.trim()) {
+        return decodeURIComponent(text).trim();
+      }
+      return null;
+    }
+
+    // ========== 分词与渲染 ==========
+
+    /**
+     * 使用 segmentit 对文本进行分词
+     * @param {string} text - 待分词的文本
+     */
+    function segmentText(text) {
+      // 显示加载状态
+      wordsContainer.innerHTML = '<div class="loading"><span class="loading__spinner"></span>正在分词…</div>';
+
+      try {
+        var segModule = window.Segmentit;
+        if (!segModule) {
+          throw new Error('分词库未加载');
+        }
+
+        var Segment = segModule.Segment;
+        var useDefault = segModule.useDefault;
+        var seg = useDefault(new Segment());
+
+        // 按换行符拆分，逐行分词，行间插入换行标记
+        // 同时处理制表符
+        var lines = text.split('\n');
+        wordList = [];
+
+        for (var li = 0; li < lines.length; li++) {
+          var line = lines[li];
+          // 按制表符拆分行内部分
+          var tabParts = line.split('\t');
+          for (var ti = 0; ti < tabParts.length; ti++) {
+            var part = tabParts[ti].trim();
+            if (part.length > 0) {
+              var segResult = seg.doSegment(part);
+              segResult = segResult.filter(function (item) {
+                return item.w.trim().length > 0;
+              });
+              for (var wi = 0; wi < segResult.length; wi++) {
+                wordList.push(segResult[wi]);
+              }
+            }
+            // 非最后一段时，追加制表符标记
+            if (ti < tabParts.length - 1) {
+              wordList.push({ w: '\t', isSpecial: true });
+            }
+          }
+          // 非最后一行时，追加换行标记
+          if (li < lines.length - 1) {
+            wordList.push({ w: '\n', isNewline: true });
+          }
+        }
+
+        if (wordList.length === 0) {
+          wordsContainer.innerHTML = '<div class="empty-state"><span class="empty-state__text">暂无分词结果</span></div>';
+          return;
+        }
+
+        renderWords();
+      } catch (err) {
+        console.error('分词失败:', err);
+        wordsContainer.innerHTML = '<div class="error-text">分词库加载失败，请检查网络连接后刷新页面</div>';
+      }
+    }
+
+    // 中文标点符号正则
+    var punctReg = /^[，。！？；：""''（）【】《》、…—～·～、]$/;
+
+    /**
+     * 判断词语是否全为中文标点符号
+     * @param {string} w
+     * @returns {boolean}
+     */
+    function isPunctuation(w) {
+      return punctReg.test(w);
+    }
+
+    /**
+     * 渲染词语标签列表
+     */
+    function renderWords() {
+      selectedSet.clear();
+
+      var html = '<div class="words-container" id="wordsInner">';
+      for (var i = 0; i < wordList.length; i++) {
+        var item = wordList[i];
+        var classes = 'word-tag';
+        if (item.isNewline) {
+          classes += ' word-tag--newline';
+          html += '<span class="' + classes + '" data-index="' + i + '" title="换行">\u21B5</span>';
+          // 隐式断行，让后续文字另起一行
+          html += '<span class="word-break"></span>';
+          continue;
+        }
+        if (item.isSpecial) {
+          classes += ' word-tag--special';
+          html += '<span class="' + classes + '" data-index="' + i + '" title="制表">\u21E5</span>';
+          continue;
+        }
+        if (isPunctuation(item.w)) {
+          classes += ' word-tag--punct';
+        } else if (item.w.length === 1) {
+          classes += ' word-tag--single';
+        }
+        html += '<span class="' + classes + '" data-index="' + i + '">' + escapeHTML(item.w) + '</span>';
+      }
+      html += '</div>';
+
+      wordsContainer.innerHTML = html;
+
+      // 绑定事件
+      var container = wordsContainer.querySelector('#wordsInner');
+      if (container) {
+        container.addEventListener('click', handleWordClick);
+        // 手指横扫快速选中
+        container.addEventListener('touchstart', handleTouchStart);
+        container.addEventListener('touchmove', handleTouchMove, { passive: false });
+        container.addEventListener('touchend', handleTouchEnd);
+      }
+    }
+
+    /**
+     * HTML 转义，防止 XSS
+     * @param {string} str
+     * @returns {string}
+     */
+    function escapeHTML(str) {
+      var div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ========== 横扫多选 ==========
+
+    var swipeActive = false;   // 是否正在进行横扫
+     var swipeStartIndex = 0;   // 横扫起始标签索引
+     var lastSwipeIndex = -1;   // 上次横扫到的索引
+     var swipeMode = 'select';  // 横扫模式：select 选中，deselect 取消选中
+     var swipeMoved = false;    // 横扫过程中是否有移动
+
+     /**
+      * 触摸开始：记录起始标签和模式
+      */
+     function handleTouchStart(event) {
+       var tag = event.target.closest('.word-tag');
+       if (!tag) return;
+
+       swipeActive = true;
+       swipeMoved = false;
+       swipeStartIndex = parseInt(tag.getAttribute('data-index'), 10);
+       lastSwipeIndex = swipeStartIndex;
+
+       // 根据起点标签状态决定横扫模式：已选中则取消，未选中则选中
+       var wasSelected = selectedSet.has(swipeStartIndex);
+       swipeMode = wasSelected ? 'deselect' : 'select';
+     }
+
+     /**
+      * 触摸移动：横扫经过的标签自动选中/取消
+      */
+     function handleTouchMove(event) {
+       if (!swipeActive) return;
+
+       swipeMoved = true;
+
+       // 阻止页面滚动，提升横扫体验
+       event.preventDefault();
+
+       var touch = event.touches[0];
+       var el = document.elementFromPoint(touch.clientX, touch.clientY);
+       if (!el) return;
+
+       var tag = el.closest('.word-tag');
+       if (!tag) return;
+
+       var index = parseInt(tag.getAttribute('data-index'), 10);
+       if (isNaN(index) || index === lastSwipeIndex) return;
+
+       lastSwipeIndex = index;
+
+       // 计算横扫覆盖的索引范围，统一设为当前模式
+       var from = Math.min(swipeStartIndex, index);
+       var to = Math.max(swipeStartIndex, index);
+
+       var allTags = document.querySelectorAll('.word-tag');
+       for (var i = from; i <= to; i++) {
+         var isSelected = selectedSet.has(i);
+         if (swipeMode === 'select' && !isSelected) {
+           selectedSet.add(i);
+           allTags[i].classList.add('word-tag--selected');
+         } else if (swipeMode === 'deselect' && isSelected) {
+           selectedSet.delete(i);
+           allTags[i].classList.remove('word-tag--selected');
+         }
+       }
+     }
+
+    /**
+      * 触摸结束：结束横扫状态
+      */
+     function handleTouchEnd() {
+       swipeActive = false;
+       lastSwipeIndex = -1;
+       // 横扫有移动时，延迟重置 flag，让 click 能检测到
+       setTimeout(function () { swipeMoved = false; }, 0);
+     }
+
+     /**
+      * 处理词语标签点击：切换选中状态（单点触发，横扫后忽略）
+      */
+     function handleWordClick(event) {
+       // 横扫过程中不处理 click
+       if (swipeMoved) {
+         swipeMoved = false;
+         return;
+       }
+
+       var tag = event.target.closest('.word-tag');
+       if (!tag) return;
+
+       var index = parseInt(tag.getAttribute('data-index'), 10);
+       if (isNaN(index)) return;
+
+       if (selectedSet.has(index)) {
+         selectedSet.delete(index);
+         tag.classList.remove('word-tag--selected');
+       } else {
+         selectedSet.add(index);
+         tag.classList.add('word-tag--selected');
+       }
+     }
+
+    // ========== 操作按钮 ==========
+
+    /**
+     * 复制选中词语到剪贴板
+     */
+    function copySelected() {
+      if (selectedSet.size === 0) {
+        showToast('请先选择词语');
+        return;
+      }
+
+      // 按原始顺序排列选中的词
+      var sortedIndices = Array.from(selectedSet).sort(function (a, b) {
+        return a - b;
+      });
+      var selectedWords = sortedIndices.map(function (idx) {
+        var item = wordList[idx];
+        // 换行/制表符标记转为实际字符
+        if (item.isNewline) return '\n';
+        if (item.isSpecial) return '\t';
+        return item.w;
+      });
+      var textToCopy = selectedWords.join('');
+
+      // 优先使用 Clipboard API
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textToCopy).then(function () {
+          showToast('已复制 ' + selectedSet.size + ' 个词');
+        }).catch(function () {
+          // 降级方案
+          fallbackCopy(textToCopy);
+        });
+      } else {
+        // 降级方案
+        fallbackCopy(textToCopy);
+      }
+    }
+
+    /**
+     * 剪贴板复制降级方案：使用 textarea + execCommand
+     * @param {string} text - 要复制的文本
+     */
+    function fallbackCopy(text) {
+      var textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+
+      try {
+        var success = document.execCommand('copy');
+        if (success) {
+          showToast('已复制 ' + selectedSet.size + ' 个词');
+        } else {
+          showToast('复制失败，请长按手动复制');
+        }
+      } catch (e) {
+        showToast('复制失败，请长按手动复制');
+      }
+
+      document.body.removeChild(textarea);
+    }
+
+    /**
+     * 清空所有选中状态
+     */
+    function clearSelection() {
+      if (selectedSet.size === 0) return;
+
+      selectedSet.clear();
+      var tags = wordsContainer.querySelectorAll('.word-tag');
+      for (var i = 0; i < tags.length; i++) {
+        tags[i].classList.remove('word-tag--selected');
+      }
+      showToast('已清空选中');
+    }
+
+    // ========== 字体缩放 ==========
+
+    /**
+     * 缩小字体：每次减小 1px，最小 10px
+     */
+    function decreaseFontSize() {
+      fontSize = Math.max(10, fontSize - 1);
+      applyFontSize();
+      showToast('字号 ' + fontSize + 'px');
+    }
+
+    /**
+     * 放大字体：每次增大 1px，最大 24px
+     */
+    function increaseFontSize() {
+      fontSize = Math.min(24, fontSize + 1);
+      applyFontSize();
+      showToast('字号 ' + fontSize + 'px');
+    }
+
+    /**
+     * 将当前字号应用到所有词语标签
+     */
+    function applyFontSize() {
+      var tags = document.querySelectorAll('.word-tag');
+      for (var i = 0; i < tags.length; i++) {
+        tags[i].style.fontSize = fontSize + 'px';
+      }
+    }
+
+    // ========== 按钮事件绑定 ==========
+    btnCopy.addEventListener('click', copySelected);
+    btnClear.addEventListener('click', clearSelection);
+    btnFontDown.addEventListener('click', decreaseFontSize);
+    btnFontUp.addEventListener('click', increaseFontSize);
+
+    // ========== 页面初始化 ==========
+
+    /**
+     * 页面入口：读取 URL 参数并分词
+     */
+    function init() {
+      var text = getTextFromURL();
+
+      if (!text) {
+        // 无参数：显示空状态提示
+        wordsContainer.innerHTML =
+          '<div class="empty-state">' +
+          '<span class="empty-state__icon">🔤</span>' +
+          '<span class="empty-state__text">请通过 URL 参数传入文本</span>' +
+          '<span class="empty-state__hint">?text=今天天气不错</span>' +
+          '</div>';
+        return;
+      }
+
+      // 有参数：开始分词
+      segmentText(text);
+    }
+
+    // 启动
+    init();
+  })();
+  </script>
+</body>
+</html>
